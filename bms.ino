@@ -143,31 +143,35 @@ void setup()
   ltc6813_init_reg_limits(TOTAL_IC, bms_ic);
 }
 
-void loop()
-{
-    int8_t error = 0;
-    uint32_t conv_time = 0;
+void loop(){
+  //--interfaccia utente temporanea--//
+  if (Serial.available()){           // Check for user inpu
     uint32_t user_command;
-    int8_t readIC = 0;
-    char input = 0;
+    Serial.println("inserisci un numero per lanciare il programma");
+    user_command = read_int();      // whait for a key
+  }
+  //---------------------------------//
+ 
+  int8_t error = 0;
+  uint32_t conv_time = 0;
+  uint32_t user_command;
+  int8_t readIC = 0;
+  char input = 0;
 
-    wakeup_sleep(TOTAL_IC);
-    ltc6813_adcv(ADC_CONVERSION_MODE, ADC_DCP, CELL_CH_TO_CONVERT);
-    conv_time = ltc6813_pollAdc();
-    Serial.print(F("cell conversion completed in:"));
-    Serial.print(((float)conv_time / 1000), 1);
-    Serial.println(F("mS"));
-    Serial.println();
+  wakeup_sleep(TOTAL_IC);
+  ltc6813_adcv(ADC_CONVERSION_MODE, ADC_DCP, CELL_CH_TO_CONVERT);
+  conv_time = ltc6813_pollAdc();
+  Serial.print(F("cell conversion completed in:"));
+  Serial.print(((float)conv_time / 1000), 1);
+  Serial.println(F("mS"));
+  Serial.println();
 
-    error = ltc6813_rdcv(0, TOTAL_IC, bms_ic); // Set to read back all cell voltage registers
-    //check_error(error);
+  error = ltc6813_rdcv(0, TOTAL_IC, bms_ic); // Set to read back all cell voltage registers
+  //check_error(error);
 
-    float cell_v[TOTAL_IC][16];
-    read_voltages(cell_v);
-
-
-
-
+  float cell_v[TOTAL_IC][16];
+  read_voltages(cell_v);
+  print_voltages(cell_v);//--interfaccia utente temporanea--//
 }
 
 
@@ -175,7 +179,7 @@ void loop()
 /******************************************************************************
 FUNCTIONS
 *******************************************************************************/
-void read_voltages(float cell_voltage[TOTAL_IC][16]){
+void read_voltages(float cell_voltage[][16]){
     for (int current_ic = 0 ; current_ic < TOTAL_IC; current_ic++) {
       for (int i = 0; i < bms_ic[0].ic_reg.cell_channels; i++) {
         if ((i!=9)&&(i!=18)) {
@@ -186,3 +190,20 @@ void read_voltages(float cell_voltage[TOTAL_IC][16]){
       }
     }
   }
+
+void print_voltages(float cell_voltage[][16]){
+  Serial.println();
+  for(int j=0;j<2;j++){
+    Serial.print(" IC ");
+    Serial.print(j,DEC);
+    Serial.print(", ");
+    for (int i=0;i<16;i++){
+      Serial.print(" C");
+      Serial.print(i+1,DEC);
+      Serial.print(":");
+      Serial.print(cell_voltage[j][i]);
+      Serial.print(",");
+    }
+    Serial.println();
+  }
+}
