@@ -175,19 +175,14 @@ void loop()
 /******************************************************************************
 FUNCTIONS
 *******************************************************************************/
-void read_voltages(float cell_voltage[TOTAL_IC][16])
-{
-    for (int current_ic = 0 ; current_ic < TOTAL_IC; current_ic++)
-    {
-        for (int i = 0; i < bms_ic[0].ic_reg.cell_channels; i++)
-        {
-
-            if ((i!=9)&&(i!=18))
-            {
-                int j = 0;
-                cell_voltage[current_ic][j] = bms_ic[current_ic].cells.c_codes[j] * 0.0001;
-                j++;
-            }
+void read_voltages(float cell_voltage[TOTAL_IC][16]){
+    for (int current_ic = 0 ; current_ic < TOTAL_IC; current_ic++) {
+      for (int i = 0; i < bms_ic[0].ic_reg.cell_channels; i++) {
+        if ((i!=9)&&(i!=18)) {
+        int j = 0;
+        cell_voltage[current_ic][j] = bms_ic[current_ic].cells.c_codes[j] * 0.0001;
+        j++;
         }
+      }
     }
-}
+  }
