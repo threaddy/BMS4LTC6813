@@ -129,10 +129,23 @@ const uint8_t PRINT_PEC = DISABLED; //This is ENABLED or DISABLED
 cell_asic bms_ic[TOTAL_IC];
 
 
-
 /*!**********************************************************************
   \brief  Inititializes hardware and variables
  ***********************************************************************/
+
+
+/*!**********************************************************************
+  \struttura per gli errori
+ ***********************************************************************/
+struct control{
+  int8_t id;                   //identificatore 
+  boolean flag;                //0->okay  1->errore
+  unsigned long time;          //momento in cui si verifica il primo errore
+};
+control problem[TOTAL_IC][16];
+void init_problem (control);
+
+
 void setup()
 {
   Serial.begin(115200);
@@ -141,37 +154,29 @@ void setup()
   ltc681x_init_cfg(TOTAL_IC, bms_ic);
   ltc6813_reset_crc_count(TOTAL_IC, bms_ic);
   ltc6813_init_reg_limits(TOTAL_IC, bms_ic);
+  init_problem (problem);
 }
 
 void loop(){
-  //--interfaccia utente temporanea--//
-  if (Serial.available()){           // Check for user inpu
-    uint32_t user_command;
-    Serial.println("inserisci un numero per lanciare il programma");
-    user_command = read_int();      // whait for a key
-  }
-  //---------------------------------//
- 
   int8_t error = 0;
   uint32_t conv_time = 0;
-  uint32_t user_command;
+  uint8_t user_command;
   int8_t readIC = 0;
   char input = 0;
+  //--interfaccia utente temporanea--//
+  if (Serial.available()){           // Check for user inpu
+    uint8_t user_command;
+    Serial.println("inserisci un numero qualsiasi per lanciare il programma");
+    user_command = read_int();      // whait for a key
+  
+   //---------------------------------//
+ 
+    voltage_measurment(); //leggo le tensioni dall'adc
 
-  wakeup_sleep(TOTAL_IC);
-  ltc6813_adcv(ADC_CONVERSION_MODE, ADC_DCP, CELL_CH_TO_CONVERT);
-  conv_time = ltc6813_pollAdc();
-  Serial.print(F("cell conversion completed in:"));
-  Serial.print(((float)conv_time / 1000), 1);
-  Serial.println(F("mS"));
-  Serial.println();
-
-  error = ltc6813_rdcv(0, TOTAL_IC, bms_ic); // Set to read back all cell voltage registers
-  //check_error(error);
-
-  float cell_v[TOTAL_IC][16];
-  read_voltages(cell_v);
-  print_voltages(cell_v);//--interfaccia utente temporanea--//
+    float cell_v[TOTAL_IC][16];
+    read_voltages(cell_v);
+   print_voltages(cell_v);//--interfaccia utente temporanea--//
+  }
 }
 
 
@@ -179,6 +184,28 @@ void loop(){
 /******************************************************************************
 FUNCTIONS
 *******************************************************************************/
+void init_problem (control problem[][16]){
+  for(uint8_t i=0;i<2;i++){
+		for(uint8_t j=0;j<16;j++){
+			problem[i][j].id=j;
+			problem[i][j].flag=0;
+      problem[i][j].time=0;
+		}
+	}
+}
+
+void voltage_measurment(){
+  wakeup_sleep(TOTAL_IC);
+  ltc6813_adcv(ADC_CONVERSION_MODE, ADC_DCP, CELL_CH_TO_CONVERT);
+  uint8_t conv_time = ltc6813_pollAdc();
+  Serial.print(F("cell conversion completed in:"));
+  Serial.print(((float)conv_time / 1000), 1);
+  Serial.println(F("mS"));
+  Serial.println();
+  uint8_t error = ltc6813_rdcv(0, TOTAL_IC, bms_ic); // Set to read back all cell voltage registers
+  //check_error(error);
+}
+
 void read_voltages(float cell_voltage[][16]){
     for (int current_ic = 0 ; current_ic < TOTAL_IC; current_ic++) {
       for (int i = 0; i < bms_ic[0].ic_reg.cell_channels; i++) {
