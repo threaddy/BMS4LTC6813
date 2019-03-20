@@ -92,7 +92,9 @@ void check_error(int error);
   configure the software.
 
 ***********************************************************/
-const uint8_t TOTAL_IC = 2;//!<number of ICs in the daisy chain
+const uint8_t TOTAL_IC = 2; //!<number of ICs in the daisy chain
+const uint8_t TOTAL_CH = 16; // number of channel used per ADC
+const uint8_t TOTAL_NTC = 8; // number of temperatures per ADC
 
 //ADC Command Configurations
 const uint8_t ADC_OPT = ADC_OPT_DISABLED; // See ltc6813_daisy.h for Options
@@ -133,6 +135,34 @@ cell_asic bms_ic[TOTAL_IC];
 /*!**********************************************************************
   \brief  Inititializes hardware and variables
  ***********************************************************************/
+
+
+/*!**********************************************************************
+  \struttura per gli errori
+ ***********************************************************************/
+struct OV_MASK{
+  boolean bit_mask[TOTAL_IC][TOTAL_CH];       //un bit per ogni serie, 1 se in sovratensione
+};
+struct OT_MASK{
+  boolean bit_mask[TOTAL_CH][TOTAL_NTC];      //un bit per ogni NTC, 1 se in surriscaldamento
+};
+
+
+struct control{
+  int8_t id;                   //identificatore
+  boolean flag;                //0->okay  1->errore
+  unsigned long time;          //momento in cui si verifica il primo errore
+  OV_MASK * v_mask;            // nel caso di errori di sovratensione, maschera allocabile dinamicamente
+  OT_MASK * t_mask;            // nel caso di errori di surriscaldamento, maschera allocabile dinamicamente
+  uint8_t value;
+  control * next;              //puntatore al prossimo errore per creare una lista
+};
+
+
+//control problem;
+//void init_problem (control);
+
+
 void setup()
 {
   Serial.begin(115200);
@@ -141,33 +171,41 @@ void setup()
   ltc681x_init_cfg(TOTAL_IC, bms_ic);
   ltc6813_reset_crc_count(TOTAL_IC, bms_ic);
   ltc6813_init_reg_limits(TOTAL_IC, bms_ic);
+  //init_problem (problem);
+
+  control* problem1 = (control*)malloc(sizeof(struct control));              //allocazione prmo errore
+  problem1->v_mask = (OV_MASK*)malloc(sizeof(struct OV_MASK));      //prova allocazione matricetta tensioni
+  problem1->v_mask->bit_mask[0][1] = true;                          //esempio per usare la maschera del primo errore
+
+  control * problem2 = (control*)malloc(sizeof(struct control));              //allocazione secondo errore
+  problem2->t_mask = (OT_MASK*)malloc(sizeof(struct OT_MASK));      //prova allocazione matricetta temperature
+  problem2->v_mask->bit_mask[0][1] = true;                          //esempio per usare la maschera del secondo errore
+
+  problem1->next = problem2;                                         //collego il secondo errore al primo
+  //problem3.value = 3;
 }
 
-void loop()
-{
-    int8_t error = 0;
-    uint32_t conv_time = 0;
-    uint32_t user_command;
-    int8_t readIC = 0;
-    char input = 0;
+void loop(){
+  int8_t error = 0;
+  uint32_t conv_time = 0;
+  uint8_t user_command;
+  uint8_t user_command;
+  int8_t readIC = 0;
+  char input = 0;
+  //--interfaccia utente temporanea--//
+  if (Serial.available()){           // Check for user inpu
+    uint8_t user_command;
+    Serial.println("inserisci un numero qualsiasi per lanciare il programma");
+    user_command = read_int();      // whait for a key
 
-    wakeup_sleep(TOTAL_IC);
-    ltc6813_adcv(ADC_CONVERSION_MODE, ADC_DCP, CELL_CH_TO_CONVERT);
-    conv_time = ltc6813_pollAdc();
-    Serial.print(F("cell conversion completed in:"));
-    Serial.print(((float)conv_time / 1000), 1);
-    Serial.println(F("mS"));
-    Serial.println();
+   //---------------------------------//
 
-    error = ltc6813_rdcv(0, TOTAL_IC, bms_ic); // Set to read back all cell voltage registers
-    //check_error(error);
+    voltage_measurement(); //leggo le tensioni dall'adc
 
-    float cell_v[TOTAL_IC][16];
+    float cell_v[TOTAL_IC][TOTAL_CH];
     read_voltages(cell_v);
-
-
-
-
+   print_voltages(cell_v);//--interfaccia utente temporanea--//
+  }
 }
 
 
@@ -175,19 +213,53 @@ void loop()
 /******************************************************************************
 FUNCTIONS
 *******************************************************************************/
-void read_voltages(float cell_voltage[TOTAL_IC][16])
-{
-    for (int current_ic = 0 ; current_ic < TOTAL_IC; current_ic++)
-    {
-        for (int i = 0; i < bms_ic[0].ic_reg.cell_channels; i++)
-        {
+void init_problem (control problem[][TOTAL_CH]){
+  for(uint8_t i=0;i<2;i++){
+		for(uint8_t j=0;j<16;j++){
+			problem[i][j].id=j;
+			problem[i][j].flag=0;
+      problem[i][j].time=0;
+		}
+	}
+}
 
-            if ((i!=9)&&(i!=18))
-            {
-                int j = 0;
-                cell_voltage[current_ic][j] = bms_ic[current_ic].cells.c_codes[j] * 0.0001;
-                j++;
-            }
+void voltage_measurement(){
+  wakeup_sleep(TOTAL_IC);
+  ltc6813_adcv(ADC_CONVERSION_MODE, ADC_DCP, CELL_CH_TO_CONVERT);
+  uint8_t conv_time = ltc6813_pollAdc();
+  Serial.print(F("cell conversion completed in:"));
+  Serial.print(((float)conv_time / 1000), 1);
+  Serial.println(F("mS"));
+  Serial.println();
+  uint8_t error = ltc6813_rdcv(0, TOTAL_IC, bms_ic); // Set to read back all cell voltage registers
+  //check_error(error);
+}
+
+void read_voltages(float cell_voltage[][TOTAL_CH]){
+    for (int current_ic = 0 ; current_ic < TOTAL_IC; current_ic++) {
+      for (int i = 0; i < bms_ic[0].ic_reg.cell_channels; i++) {
+        if ((i!=9)&&(i!=18)) {
+        int j = 0;
+        cell_voltage[current_ic][j] = bms_ic[current_ic].cells.c_codes[j] * 0.0001;
+        j++;
         }
+      }
     }
+  }
+
+void print_voltages(float cell_voltage[][TOTAL_CH]){
+  Serial.println();
+  for(int j=0;j<2;j++){
+    Serial.print(" IC ");
+    Serial.print(j,DEC);
+    Serial.print(", ");
+    for (int i=0;i<16;i++){
+      Serial.print(" C");
+      Serial.print(i+1,DEC);
+      Serial.print(":");
+      Serial.print(cell_voltage[j][i]);
+      Serial.print(",");
+    }
+    Serial.println();
+  }
 }
